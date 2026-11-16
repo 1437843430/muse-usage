@@ -1,10 +1,12 @@
 // Muse 额度小组件 for Egern
 // generic 类型脚本，放到 Egern -> 工具 -> 脚本，名称 muse-usage，类型 generic，本地文件 muse-usage.js
 // 环境变量 MUSE_USAGE_URL：指向 muse-usage.json 的公开直链，例如 GitHub Raw URL
-//   https://raw.githubusercontent.com/<你的用户名>/<仓库名>/main/muse-usage.json
+//   https://raw.githubusercontent.com/1437843430/muse-usage/main/muse-usage.json
 // 数据格式见同目录 muse-usage.json
 // 逻辑：每次刷新先拉取远程 JSON，成功就写入缓存；拉不到就读缓存显示，并标注“缓存”；连缓存都没有才显示“暂无数据”
-// 颜色：剩余额度 >=25% 绿色，<25% 黄色，<10% 红色
+// 颜色：剩余额度 >=25% 绿色，<25% 黄色，<10% 红色；额外 Token 池同样规则
+// 布局（参考用户发的图）：标题 Muse用量 + 更新时间；周额度一组（剩 X% + 进度条 + 重置时间 + 免费档·已用 Y%）；
+// 额外 Token 池一组（剩 Z% + 进度条 + 周额度用完后自动接管 + 已用 A%·还剩约 31B tokens）；底部 iOS 决定刷新间隔，非实时
 // 刷新：返回的 widget.refreshAfter 设为 3 小时后，iOS 也会在此时间后刷新
 
 export default async function (ctx) {
@@ -20,12 +22,12 @@ export default async function (ctx) {
     return '#34C759';
   }
 
-  function barSvg(remaining, color) {
-    const w = 280;
+  function barSvg(remaining, color, w) {
+    const width = w || 280;
     const h = 10;
-    const fillW = Math.max(0, Math.min(w, Math.round((w * remaining) / 100)));
+    const fillW = Math.max(0, Math.min(width, Math.round((width * remaining) / 100)));
     const c = color.replace('#', '%23');
-    const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 " + w + " " + h + "'><rect x='0' y='0' width='" + w + "' height='" + h + "' rx='5' fill='%23333338'/><rect x='0' y='0' width='" + fillW + "' height='" + h + "' rx='5' fill='" + c + "'/></svg>";
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 " + width + " " + h + "'><rect x='0' y='0' width='" + width + "' height='" + h + "' rx='5' fill='%23333338'/><rect x='0' y='0' width='" + fillW + "' height='" + h + "' rx='5' fill='" + c + "'/></svg>";
     return 'data:image/svg+xml,' + svg;
   }
 
@@ -46,7 +48,7 @@ export default async function (ctx) {
       gap: 8,
       backgroundColor: '#1C1C1E',
       children: [
-        { type: 'text', text: 'Muse 额度', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
+        { type: 'text', text: 'Muse用量', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
         { type: 'text', text: text, font: { size: 'subheadline', weight: 'semibold' }, textColor: '#FF3B30' },
         { type: 'text', text: sub || '请检查 MUSE_USAGE_URL 或网络', font: { size: 'caption1' }, textColor: '#AAAAAA' }
       ]
@@ -91,7 +93,14 @@ export default async function (ctx) {
   const resetText = data.reset_time || (data.reset_time_iso ? fmtTime(data.reset_time_iso) : '');
   const updatedText = data.updated_at || (data.updated_at_iso ? fmtTime(data.updated_at_iso) : '');
   const cacheTag = fromCache ? ' · 缓存' : '';
-  const statusText = remaining < 10 ? '额度告急' : remaining < 25 ? '额度偏低' : '额度充足';
+
+  // 额外 Token 池：优先用 additional_tokens_remaining_pct，否则用 100 - additional_tokens_used_pct
+  const addUsed = (typeof data.additional_tokens_used_pct === 'number') ? Math.round(data.additional_tokens_used_pct) : 0;
+  const addRemaining = (typeof data.additional_tokens_remaining_pct === 'number')
+    ? Math.max(0, Math.min(100, Math.round(data.additional_tokens_remaining_pct)))
+    : Math.max(0, Math.min(100, 100 - addUsed));
+  const addColor = colorFor(addRemaining);
+  const addLeft = data.additional_tokens_left || '';
 
   // 锁屏小尺寸：只显示最关键的数字
   if (ctx.widgetFamily === 'accessoryRectangular') {
@@ -100,7 +109,7 @@ export default async function (ctx) {
       refreshAfter: refreshAfter,
       padding: 12,
       children: [
-        { type: 'text', text: 'Muse 剩 ' + remaining + '%' + cacheTag, font: { size: 'headline', weight: 'bold' }, textColor: color }
+        { type: 'text', text: 'Muse 剩 ' + remaining + '% · 附加 ' + addRemaining + '%' + cacheTag, font: { size: 'headline', weight: 'bold' }, textColor: color }
       ]
     };
   }
@@ -114,38 +123,55 @@ export default async function (ctx) {
     };
   }
 
-  // 主屏幕中尺寸（推荐）：标题 + 大数字 + 进度条 + 重置时间 + 更新时间
+  // 主屏幕（参考用户发的图）：两组进度条，周额度 + 额外 Token 池
   return {
     type: 'widget',
     refreshAfter: refreshAfter,
     padding: 16,
-    gap: 8,
+    gap: 6,
     backgroundColor: '#1C1C1E',
     children: [
       {
         type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
         children: [
-          { type: 'text', text: 'Muse 额度', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
+          { type: 'text', text: 'Muse用量', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
           { type: 'spacer' },
-          { type: 'text', text: statusText + cacheTag, font: { size: 'caption1', weight: 'semibold' }, textColor: color }
+          { type: 'text', text: updatedText + cacheTag, font: { size: 'caption1' }, textColor: '#AAAAAA' }
         ]
       },
       {
-        type: 'stack', direction: 'row', alignItems: 'center', gap: 6,
+        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
         children: [
-          { type: 'text', text: '剩 ' + remaining + '%', font: { size: 'title', weight: 'bold' }, textColor: color },
-          { type: 'text', text: '已用 ' + used + '%', font: { size: 'subheadline' }, textColor: '#AAAAAA' }
+          { type: 'text', text: 'Muse 周额度', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
+          { type: 'spacer' },
+          { type: 'text', text: '剩 ' + remaining + '%', font: { size: 'title', weight: 'bold' }, textColor: color }
         ]
       },
       {
-        type: 'image',
-        src: barSvg(remaining, color),
-        width: 280,
-        height: 10,
-        borderRadius: 5
+        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
+        children: [
+          { type: 'image', src: barSvg(remaining, color, 150), width: 150, height: 10, borderRadius: 5 },
+          { type: 'text', text: resetText + ' 重置', font: { size: 'caption1' }, textColor: '#FFFFFF', maxLines: 1 }
+        ]
       },
-      { type: 'text', text: '重置：' + resetText, font: { size: 'subheadline' }, textColor: '#FFFFFF' },
-      { type: 'text', text: '更新：' + updatedText + (data.additional_tokens_left ? ' · 附加 ' + data.additional_tokens_left + ' 剩' : ''), font: { size: 'caption1' }, textColor: '#AAAAAA', maxLines: 1 }
+      { type: 'text', text: '免费档 · 已用 ' + used + '%', font: { size: 'subheadline' }, textColor: '#AAAAAA' },
+      {
+        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
+        children: [
+          { type: 'text', text: 'Muse 额外 Token 池', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
+          { type: 'spacer' },
+          { type: 'text', text: '剩 ' + addRemaining + '%', font: { size: 'title', weight: 'bold' }, textColor: addColor }
+        ]
+      },
+      {
+        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
+        children: [
+          { type: 'image', src: barSvg(addRemaining, addColor, 150), width: 150, height: 10, borderRadius: 5 },
+          { type: 'text', text: '周额度用完后自动接管', font: { size: 'caption1' }, textColor: '#FFFFFF', maxLines: 1 }
+        ]
+      },
+      { type: 'text', text: '已用 ' + addUsed + '%' + (addLeft ? ' · 还剩约 ' + addLeft + ' tokens' : ''), font: { size: 'subheadline' }, textColor: '#AAAAAA' },
+      { type: 'text', text: 'iOS 决定刷新间隔，非实时', font: { size: 'caption1' }, textColor: '#AAAAAA' }
     ]
   };
 }
