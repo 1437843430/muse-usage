@@ -1,0 +1,24 @@
+# Egern 模块：Muse 额度小组件
+# 安装方式（二选一）：
+# A) 手动：把 muse-usage.js 在 Egern 里新建 generic 脚本粘贴进去，再在小组件画廊新建小组件关联它（推荐，见安装步骤）
+# B) 模块：把本文件和 muse-usage.js 一起放到你的 GitHub 公开仓库，把下面 script_url 换成你自己的 Raw 直链，
+#    再在 Egern -> 工具 -> 模块 -> + 粘贴本模块的 Raw 直链安装
+name: "Muse 额度小组件"
+description: "桌面小组件显示 Muse 剩余额度、进度条和重置时间，每 3 小时刷新，低于 25% 黄、低于 10% 红，取不到显示缓存"
+author: "Muse"
+scriptings:
+  - generic:
+      name: "muse-usage"
+      # 改成你自己的 muse-usage.js Raw 直链，例如：
+      # https://raw.githubusercontent.com/1437843430/muse-usage/main/muse-usage.js
+      script_url: "https://raw.githubusercontent.com/1437843430/muse-usage/main/muse-usage.js"
+      timeout: 20
+      env:
+        # 改成你自己的 muse-usage.json Raw 直链，例如：
+        # https://raw.githubusercontent.com/1437843430/muse-usage/main/muse-usage.json
+        MUSE_USAGE_URL: "https://raw.githubusercontent.com/1437843430/muse-usage/main/muse-usage.json"
+widgets:
+  - name: "Muse 额度"
+    script_name: "muse-usage"
+    env:
+      MUSE_USAGE_URL: "https://raw.githubusercontent.com/1437843430/muse-usage/main/muse-usage.json"
