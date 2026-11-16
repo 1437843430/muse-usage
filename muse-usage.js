@@ -5,8 +5,10 @@
 // 数据格式见同目录 muse-usage.json
 // 逻辑：每次刷新先拉取远程 JSON，成功就写入缓存；拉不到就读缓存显示，并标注“缓存”；连缓存都没有才显示“暂无数据”
 // 颜色：剩余额度 >=25% 绿色，<25% 黄色，<10% 红色；额外 Token 池同样规则
-// 布局（参考用户发的图）：标题 Muse用量 + 更新时间；周额度一组（剩 X% + 进度条 + 重置时间 + 免费档·已用 Y%）；
-// 额外 Token 池一组（剩 Z% + 进度条 + 周额度用完后自动接管 + 已用 A%·还剩约 31B tokens）；底部 iOS 决定刷新间隔，非实时
+// 布局（参考用户发的图）：周额度一组（剩 X% + 进度条 + 重置时间 + 免费档·已用 Y%）；
+// 额外 Token 池一组（剩 Z% + 进度条 + 周额度用完后自动接管 + 已用 A%·还剩约 31B tokens）。
+// 中号只放这两组（6 行），大号再加标题 Muse用量 + 更新时间、底部 iOS 决定刷新间隔，非实时；
+// 中号放 8 行会溢出，顶部标题没了、底部一行被切一半。
 // 刷新：返回的 widget.refreshAfter 设为 3 小时后，iOS 也会在此时间后刷新
 
 export default async function (ctx) {
@@ -123,55 +125,71 @@ export default async function (ctx) {
     };
   }
 
-  // 主屏幕（参考用户发的图）：两组进度条，周额度 + 额外 Token 池
+// 主屏幕（参考用户发的图）：两组进度条，周额度 + 额外 Token 池
+  // 注意：中号小组件高度不够，8 行会溢出（顶部标题被顶掉、底部一行被切一半），
+  // 所以中号只放 6 行核心内容；大号才放完整版（标题 + 底部说明）。
+  const weeklyHeader = {
+    type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
+    children: [
+      { type: 'text', text: 'Muse 周额度', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
+      { type: 'spacer' },
+      { type: 'text', text: '剩 ' + remaining + '%', font: { size: 'title', weight: 'bold' }, textColor: color }
+    ]
+  };
+  const weeklyBar = {
+    type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
+    children: [
+      { type: 'image', src: barSvg(remaining, color, 150), width: 150, height: 10, borderRadius: 5 },
+      { type: 'text', text: resetText + ' 重置', font: { size: 'caption1' }, textColor: '#FFFFFF', maxLines: 1 }
+    ]
+  };
+  const weeklySub = { type: 'text', text: '免费档 · 已用 ' + used + '%', font: { size: 'subheadline' }, textColor: '#AAAAAA' };
+  const addHeader = {
+    type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
+    children: [
+      { type: 'text', text: 'Muse 额外 Token 池', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
+      { type: 'spacer' },
+      { type: 'text', text: '剩 ' + addRemaining + '%', font: { size: 'title', weight: 'bold' }, textColor: addColor }
+    ]
+  };
+  const addBar = {
+    type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
+    children: [
+      { type: 'image', src: barSvg(addRemaining, addColor, 150), width: 150, height: 10, borderRadius: 5 },
+      { type: 'text', text: '周额度用完后自动接管', font: { size: 'caption1' }, textColor: '#FFFFFF', maxLines: 1 }
+    ]
+  };
+  const addSub = { type: 'text', text: '已用 ' + addUsed + '%' + (addLeft ? ' · 还剩约 ' + addLeft + ' tokens' : ''), font: { size: 'subheadline' }, textColor: '#AAAAAA' };
+
+  if (ctx.widgetFamily === 'systemLarge') {
+    return {
+      type: 'widget',
+      refreshAfter: refreshAfter,
+      padding: 16,
+      gap: 6,
+      backgroundColor: '#1C1C1E',
+      children: [
+        {
+          type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
+          children: [
+            { type: 'text', text: 'Muse用量', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
+            { type: 'spacer' },
+            { type: 'text', text: updatedText + cacheTag, font: { size: 'caption1' }, textColor: '#AAAAAA' }
+          ]
+        },
+        weeklyHeader, weeklyBar, weeklySub, addHeader, addBar, addSub,
+        { type: 'text', text: 'iOS 决定刷新间隔，非实时', font: { size: 'caption1' }, textColor: '#AAAAAA' }
+      ]
+    };
+  }
+
+  // 中号（默认）：紧凑版，6 行，刚好放下不被切
   return {
     type: 'widget',
     refreshAfter: refreshAfter,
-    padding: 16,
-    gap: 6,
+    padding: 12,
+    gap: 4,
     backgroundColor: '#1C1C1E',
-    children: [
-      {
-        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
-        children: [
-          { type: 'text', text: 'Muse用量', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
-          { type: 'spacer' },
-          { type: 'text', text: updatedText + cacheTag, font: { size: 'caption1' }, textColor: '#AAAAAA' }
-        ]
-      },
-      {
-        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
-        children: [
-          { type: 'text', text: 'Muse 周额度', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
-          { type: 'spacer' },
-          { type: 'text', text: '剩 ' + remaining + '%', font: { size: 'title', weight: 'bold' }, textColor: color }
-        ]
-      },
-      {
-        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
-        children: [
-          { type: 'image', src: barSvg(remaining, color, 150), width: 150, height: 10, borderRadius: 5 },
-          { type: 'text', text: resetText + ' 重置', font: { size: 'caption1' }, textColor: '#FFFFFF', maxLines: 1 }
-        ]
-      },
-      { type: 'text', text: '免费档 · 已用 ' + used + '%', font: { size: 'subheadline' }, textColor: '#AAAAAA' },
-      {
-        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
-        children: [
-          { type: 'text', text: 'Muse 额外 Token 池', font: { size: 'headline', weight: 'bold' }, textColor: '#FFFFFF' },
-          { type: 'spacer' },
-          { type: 'text', text: '剩 ' + addRemaining + '%', font: { size: 'title', weight: 'bold' }, textColor: addColor }
-        ]
-      },
-      {
-        type: 'stack', direction: 'row', alignItems: 'center', gap: 8,
-        children: [
-          { type: 'image', src: barSvg(addRemaining, addColor, 150), width: 150, height: 10, borderRadius: 5 },
-          { type: 'text', text: '周额度用完后自动接管', font: { size: 'caption1' }, textColor: '#FFFFFF', maxLines: 1 }
-        ]
-      },
-      { type: 'text', text: '已用 ' + addUsed + '%' + (addLeft ? ' · 还剩约 ' + addLeft + ' tokens' : ''), font: { size: 'subheadline' }, textColor: '#AAAAAA' },
-      { type: 'text', text: 'iOS 决定刷新间隔，非实时', font: { size: 'caption1' }, textColor: '#AAAAAA' }
-    ]
+    children: [weeklyHeader, weeklyBar, weeklySub, addHeader, addBar, addSub]
   };
 }
